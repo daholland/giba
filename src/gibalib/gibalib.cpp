@@ -4,6 +4,8 @@
 #include <iostream>
 #include "gibalib.h"
 
+using namespace giba;
+
 Gibalib::Gibalib(int f) : foo{f} {}
 
 void Gibalib::debugtest() {

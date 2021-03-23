@@ -4,3 +4,15 @@
 [submodule "extlib/imgui"]
 	path = extlib/imgui
 	url = https://github.com/ocornut/imgui
+[submodule "extlib/vk-bootstrap"]
+	path = extlib/vk-bootstrap
+	url = https://github.com/charles-lunarg/vk-bootstrap
+[submodule "extlib/VulkanMemoryAllocator"]
+	path = extlib/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "extlib/glm"]
+	path = extlib/glm
+	url = https://github.com/g-truc/glm
+[submodule "extlib/stb"]
+	path = extlib/stb
+	url = https://github.com/nothings/stb
