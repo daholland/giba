@@ -1,0 +1,6 @@
+[submodule "extlib/SDL"]
+	path = extlib/SDL
+	url = https://github.com/libsdl-org/SDL
+[submodule "extlib/imgui"]
+	path = extlib/imgui
+	url = https://github.com/ocornut/imgui
