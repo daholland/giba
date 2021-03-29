@@ -16,3 +16,9 @@
 [submodule "extlib/stb"]
 	path = extlib/stb
 	url = https://github.com/nothings/stb
+[submodule "extlib/sqlite_orm"]
+	path = extlib/sqlite_orm
+	url = https://github.com/fnc12/sqlite_orm
+[submodule "extlib/tinyobjloader"]
+	path = extlib/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader

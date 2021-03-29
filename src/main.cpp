@@ -1,4 +1,5 @@
 #include <spock.h>
+using namespace spock;
 
 int main(int argc, char* argv[]) {
     Spock spock;

@@ -8,3 +8,5 @@ find_package(SDL2 REQUIRED)
 
 add_subdirectory("src")
 add_subdirectory("extlib")
+
+target_link_options(giba PUBLIC "LINKER:-v")
