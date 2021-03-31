@@ -11,6 +11,13 @@
 #include <functional>
 #include "vk_mesh.h"
 #include <glm/glm.hpp>
+#include <string>
+#include <filesystem>
+
+////
+constexpr uint FRAME_OVERLAP = 2;
+
+////
 
 namespace {
     typedef struct SDL_Window* SDL_Window_ptr;
@@ -38,9 +45,57 @@ namespace spock {
         glm::mat4 render_matrix;
     };
 
+    struct Material {
+        VkPipeline pipeline;
+        VkPipelineLayout pipelineLayout;
+    };
+
+    struct RenderObject {
+        Mesh* mesh;
+        Material* material;
+        glm::mat4 transformMatrix;
+    };
+
+    struct GPUCameraData {
+        glm::mat4 view;
+        glm::mat4 projection;
+        glm::mat4 viewproj;
+    };
+
+    struct GPUSceneData {
+        glm::vec4 fogColor;
+        glm::vec4 fogDistances;
+        glm::vec4 ambientColor;
+        glm::vec4 sunlightDirection;
+        glm::vec4 sunlightColor;
+    };
+
+    struct GPUObjectData {
+        glm::mat4 modelMatrix;
+    };
+
+    struct AppState {
+        glm::vec3 camPos;
+    };
+
+    struct FrameData {
+        VkSemaphore _presentSemaphore, _renderSemaphore;
+        VkFence _renderFence;
+
+        VkCommandPool _commandPool;
+        VkCommandBuffer _mainCommandBuffer;
+
+        AllocatedBuffer cameraBuffer;
+        VkDescriptorSet globalDescriptor;
+
+        AllocatedBuffer objectBuffer;
+        VkDescriptorSet objectDescriptor;
+
+    };
+
     class Spock {
     public:
-
+        AppState _appState;
         bool _isInitialized{false};
         int _frameNumber{0};
         int _selectedShader{0};
@@ -54,9 +109,11 @@ namespace spock {
         VkDebugUtilsMessengerEXT _debug_messenger;
         VkPhysicalDevice _chosenGPU;
         VkDevice _device;
-        VkSurfaceKHR _surface;
+        VkPhysicalDeviceProperties _gpuProperties;
 
         DeletionQueue _mainDeletionQueue;
+
+        VkSurfaceKHR _surface;
 
         VkSwapchainKHR _swapchain;
         VkFormat _swapchainImageFormat;
@@ -66,36 +123,42 @@ namespace spock {
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;
 
-        VkCommandPool _commandPool;
-        VkCommandBuffer _mainCommandBuffer;
-
         VkRenderPass _renderPass;
         std::vector<VkFramebuffer> _framebuffers;
+        FrameData _frames[FRAME_OVERLAP];
 
-        VkSemaphore _presentSemaphore, _renderSemaphore;
-        VkFence _renderFence;
+        VkDescriptorSetLayout _globalSetLayout;
+        VkDescriptorSetLayout _objectSetLayout;
 
-        VkPipelineLayout _trianglePipelineLayout;
-        VkPipeline _trianglePipeline;
-        VkPipeline _redTrianglePipeline;
+        VkDescriptorPool _descriptorPool;
 
-        VkPipelineLayout _meshPipelineLayout;
+        GPUSceneData _sceneParameters;
+        AllocatedBuffer _sceneParametersBuffer;
+
         VkPipeline _meshPipeline;
-
-        Mesh _triangleMesh;
-        Mesh _monkeyMesh;
 
         VkImageView _depthImageView;
         AllocatedImage _depthImage;
 
         VkFormat _depthFormat;
 
+        std::vector<RenderObject> _renderables;
+        std::unordered_map<std::string, Material> _materials;
+        std::unordered_map<std::string, Mesh> _meshes;
+
+        Material* create_material(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+        Material* get_material(const std::string& name);
+
+        Mesh* get_mesh(const std::string& name);
+
+        FrameData& get_current_frame();
+        AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);
         void init();
 
         void cleanup();
 
         void draw();
-
+        void draw_objects(VkCommandBuffer cmd, RenderObject* first, int count);
         void run();
 
     private:
@@ -112,13 +175,20 @@ namespace spock {
 
         void init_sync_structures();
 
+        void init_descriptors();
         void init_pipelines();
 
-        bool load_shader_module(const char *filePath, VkShaderModule *outShaderModule);
+        void init_scene();
+
+        bool load_shader_module(std::filesystem::path filePath, VkShaderModule *outShaderModule);
+        void load_shader_module_from_path(std::filesystem::path filePath, VkShaderModule *outShaderModule);
 
         void load_meshes();
 
         void upload_mesh(Mesh& mesh);
+
+        size_t pad_uniform_buffer_size(size_t originalSize);
+
 
     };
 
@@ -138,6 +208,8 @@ namespace spock {
 
         VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
     };
+
+
 
 
 }

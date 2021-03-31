@@ -197,5 +197,52 @@ namespace vkinit {
         return rpInfo;
     }
 
+    VkFenceCreateInfo fence_create_info(VkFenceCreateFlags flags) {
+        VkFenceCreateInfo fenceCreateInfo = {};
+        fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceCreateInfo.pNext = nullptr;
+        fenceCreateInfo.flags = flags;
+
+        return fenceCreateInfo;
+    }
+
+    VkSemaphoreCreateInfo semaphore_create_info(VkSemaphoreCreateFlags flags) {
+        VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+        semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semaphoreCreateInfo.pNext = nullptr;
+        semaphoreCreateInfo.flags = flags;
+
+        return semaphoreCreateInfo;
+    }
+
+    VkDescriptorSetLayoutBinding
+    descriptorset_layout_binding(VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t binding) {
+        VkDescriptorSetLayoutBinding setBind = {};
+        setBind.binding = binding;
+        setBind.descriptorCount = 1;
+        setBind.descriptorType = type;
+        setBind.pImmutableSamplers = nullptr;
+        setBind.stageFlags = stageFlags;
+
+        return setBind;
+    }
+
+    VkWriteDescriptorSet
+    write_decriptor_buffer(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorBufferInfo *bufferInfo,
+                           uint32_t binding) {
+        VkWriteDescriptorSet setWrite = {};
+        setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        setWrite.pNext = nullptr;
+
+        setWrite.dstBinding = binding;
+        setWrite.dstSet = dstSet;
+
+        setWrite.descriptorCount = 1;
+        setWrite.descriptorType = type;
+        setWrite.pBufferInfo = bufferInfo;
+
+        return setWrite;
+    }
+
 
 }

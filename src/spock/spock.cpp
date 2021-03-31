@@ -19,6 +19,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 
 
 
@@ -63,9 +64,17 @@ void Spock::init() {
     init_framebuffers();
     init_sync_structures();
 
+    init_descriptors();
+
     init_pipelines();
 
     load_meshes();
+
+    init_scene();
+
+    //init_state();
+    _appState = AppState {};
+    _appState.camPos = { 0.f, -6.f, -10.f };
 
     _isInitialized = true;
 }
@@ -101,6 +110,9 @@ void Spock::init_vulkan() {
     _device = vkbDevice.device;
     _chosenGPU = physicalDevice.physical_device;
 
+    vkGetPhysicalDeviceProperties(_chosenGPU, &_gpuProperties);
+    std::cout << "The GPU has a minimum buffer alignment of " << _gpuProperties.limits.minUniformBufferOffsetAlignment << std::endl;
+
     _graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 
@@ -109,6 +121,7 @@ void Spock::init_vulkan() {
     allocatorInfo.device = _device;
     allocatorInfo.instance = _instance;
     vmaCreateAllocator(&allocatorInfo, &_allocator);
+
 
 
 }
@@ -163,14 +176,17 @@ void Spock::init_swapchain() {
 void Spock::init_commands() {
 
     VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-    VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_commandPool));
 
-    VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_commandPool, 1);
-    VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_mainCommandBuffer));
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_frames[i]._commandPool));
 
-    _mainDeletionQueue.push_function([=]() {
-        vkDestroyCommandPool(_device, _commandPool, nullptr);
-    });
+        VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_frames[i]._commandPool, 1);
+        VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i]._mainCommandBuffer));
+
+        _mainDeletionQueue.push_function([=]() {
+            vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
+        });
+    }
 
 }
 
@@ -261,73 +277,28 @@ void Spock::init_framebuffers() {
 }
 
 void Spock::init_sync_structures() {
-    VkFenceCreateInfo fenceCreateInfo = {};
-    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceCreateInfo.pNext = nullptr;
+    VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    VkSemaphoreCreateInfo semaphoreCreateInfo = vkinit::semaphore_create_info();
 
-    fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i]._renderFence));
 
-    VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_renderFence));
+        _mainDeletionQueue.push_function([=]() {
+            vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
+        });
 
-    _mainDeletionQueue.push_function([=]() {
-        vkDestroyFence(_device, _renderFence, nullptr);
-    });
 
-    VkSemaphoreCreateInfo semaphoreCreateInfo = {};
-    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semaphoreCreateInfo.pNext = nullptr;
-    semaphoreCreateInfo.flags = 0;
-
-    VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_presentSemaphore));
-    VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_renderSemaphore));
-    _mainDeletionQueue.push_function([=]() {
-        vkDestroySemaphore(_device, _presentSemaphore, nullptr);
-        vkDestroySemaphore(_device, _renderSemaphore, nullptr);
-    });
+        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._presentSemaphore));
+        VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
+        _mainDeletionQueue.push_function([=]() {
+            vkDestroySemaphore(_device, _frames[i]._presentSemaphore, nullptr);
+            vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
+        });
+    }
 }
 
 void Spock::init_pipelines() {
-    VkShaderModule triangleFragShader;
-    if (!load_shader_module("../../src/shaders/colored_triangle.frag.spv", &triangleFragShader))
-    {
-        std::cout << "Error when building the tri frag!!!" << std::endl;
-    }
-    else {
-        std::cout << "Triangle frag shader loaded" << std::endl;
-    }
 
-    VkShaderModule triangleVertexShader;
-    if (!load_shader_module("../../src/shaders/colored_triangle.vert.spv", &triangleVertexShader))
-    {
-        std::cout << "Error when building the tri vert!!!" << std::endl;
-    }
-    else {
-        std::cout << "Triangle vert shader loaded" << std::endl;
-    }
-
-    VkShaderModule redTriangleFragShader;
-    if (!load_shader_module("../../src/shaders/triangle.frag.spv", &redTriangleFragShader))
-    {
-        std::cout << "Error when building the redtri frag!!!" << std::endl;
-    }
-    else {
-        std::cout << "red Triangle frag shader loaded" << std::endl;
-    }
-
-    VkShaderModule redTriangleVertexShader;
-    if (!load_shader_module("../../src/shaders/triangle.vert.spv", &redTriangleVertexShader))
-    {
-        std::cout << "Error when building the red tri vert!!!" << std::endl;
-    }
-    else {
-        std::cout << "red Triangle vert shader loaded" << std::endl;
-    }
-
-
-
-    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-
-    VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
 
     VkPipelineLayoutCreateInfo mesh_pipeline_layout_info = vkinit::pipeline_layout_create_info();
 
@@ -339,16 +310,16 @@ void Spock::init_pipelines() {
     mesh_pipeline_layout_info.pushConstantRangeCount = 1;
     mesh_pipeline_layout_info.pPushConstantRanges = &push_constant;
 
-    VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &_meshPipelineLayout));
+    VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _objectSetLayout };
+
+    mesh_pipeline_layout_info.setLayoutCount = std::size(setLayouts);
+    mesh_pipeline_layout_info.pSetLayouts = setLayouts;
+
+    VkPipelineLayout meshPipelineLayout;
+    VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &meshPipelineLayout));
 
 
     PipelineBuilder pipelineBuilder;
-    pipelineBuilder._shaderStages.push_back(
-            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, triangleVertexShader)
-            );
-    pipelineBuilder._shaderStages.push_back(
-            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader)
-            );
 
     pipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
     pipelineBuilder._inputAssembly = vkinit::input_assembly_create_info(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -371,27 +342,11 @@ void Spock::init_pipelines() {
 
     pipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
-    pipelineBuilder._pipelineLayout = _trianglePipelineLayout;
-
-    _trianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
-
-    pipelineBuilder._shaderStages.clear();
-
-    pipelineBuilder._shaderStages.push_back(
-            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, redTriangleVertexShader)
-    );
-    pipelineBuilder._shaderStages.push_back(
-            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, redTriangleFragShader)
-    );
-
-    _redTrianglePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
-
     VkShaderModule meshVertShader;
-    if (!load_shader_module("../../src/shaders/tri_mesh.vert.spv", &meshVertShader)) {
-        std::cout << "Error when building the trimesh shader module!" << std::endl;
-    } else {
-        std::cout << "TriMesh vertex shader successfully loaded" << std::endl;
-    }
+    load_shader_module_from_path("../../src/shaders/tri_mesh.vert.spv", &meshVertShader);
+    VkShaderModule colorMeshShader;
+    load_shader_module_from_path("../../src/shaders/default_lit.frag.spv", &colorMeshShader);
+
     VertexInputDescription vertexDescription = Vertex::get_vertex_description();
 
     pipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertexDescription.attributes.size();
@@ -403,25 +358,23 @@ void Spock::init_pipelines() {
     pipelineBuilder._shaderStages.clear();
 
     pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
-    pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFragShader));
+    pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, colorMeshShader));
 
-    pipelineBuilder._pipelineLayout = _meshPipelineLayout;
+    pipelineBuilder._pipelineLayout = meshPipelineLayout;
     _meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+
+    create_material(_meshPipeline, meshPipelineLayout, "defaultmesh");
 
     //clean
     vkDestroyShaderModule(_device, meshVertShader, nullptr);
-    vkDestroyShaderModule(_device, redTriangleVertexShader, nullptr);
-    vkDestroyShaderModule(_device, redTriangleFragShader, nullptr);
-    vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
-    vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+    vkDestroyShaderModule(_device, colorMeshShader, nullptr);
 
     _mainDeletionQueue.push_function([=](){
-       vkDestroyPipeline(_device, _redTrianglePipeline, nullptr);
-       vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+
        vkDestroyPipeline(_device, _meshPipeline, nullptr);
 
-       vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
-       vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
+       vkDestroyPipelineLayout(_device, meshPipelineLayout, nullptr);
+
     });
 
 }
@@ -444,8 +397,7 @@ void Spock::cleanup() {
 //            vkDestroyFramebuffer(_device,_framebuffers[i],nullptr);
 //            vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
 //        }
-
-        vkWaitForFences(_device, 1, &_renderFence, true, 1000000000);
+        vkDeviceWaitIdle(_device);
 
         _mainDeletionQueue.flush();
 
@@ -462,15 +414,17 @@ void Spock::cleanup() {
 }
 
 void Spock::draw() {
-    VK_CHECK(vkWaitForFences(_device, 1, &_renderFence, true, 1000000000));
-    VK_CHECK(vkResetFences(_device, 1, &_renderFence));
+
+    VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
+    //vkDeviceWaitIdle(_device);
+    VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
+
+    VK_CHECK(vkResetCommandBuffer(get_current_frame()._mainCommandBuffer, 0));
 
     uint32_t swapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain,1000000000, _presentSemaphore, nullptr, &swapchainImageIndex));
+    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain,1000000000, get_current_frame()._presentSemaphore, nullptr, &swapchainImageIndex));
 
-    VK_CHECK(vkResetCommandBuffer(_mainCommandBuffer, 0));
-
-    VkCommandBuffer cmd = _mainCommandBuffer;
+    VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
 
     VkCommandBufferBeginInfo cmdBeginInfo = {};
     cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -481,7 +435,7 @@ void Spock::draw() {
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     VkClearValue clearValue;
-    float flash = abs(sin(_frameNumber / 120.f));
+    float flash = abs(sin((float)_frameNumber / 120.f));
     clearValue.color = { { 0.0f, 0.0f, flash, 1.0f}};
 
     VkClearValue depthClear;
@@ -504,34 +458,8 @@ void Spock::draw() {
     //////////
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    if (_selectedShader == 0) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
-        vkCmdDraw(cmd,3,1,0,0);
-    } else if (_selectedShader == 1) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _redTrianglePipeline);
-        vkCmdDraw(cmd,3,1,0,0);
-    } else {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+    draw_objects(cmd, _renderables.data(), _renderables.size());
 
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmd, 0, 1, &_monkeyMesh._vertexBuffer._buffer, &offset);
-
-        glm::vec3 camPos = { 0.f, 0.f, -2.f};
-
-        glm::mat4 view = glm::translate(glm::mat4 { 1.f}, camPos);
-        glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
-        projection[1][1] *= -1;
-        glm::mat4 model = glm::rotate(glm::mat4{1.f}, glm::radians(_frameNumber * 0.4f), glm::vec3(0,1,0));
-
-        glm::mat4 mesh_matrix = projection * view * model;
-
-        MeshPushConstants constants;
-        constants.render_matrix = mesh_matrix;
-
-        vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-        vkCmdDraw(cmd,_monkeyMesh._vertices.size(),1,0,0);
-    }
 
 
 
@@ -548,15 +476,15 @@ void Spock::draw() {
 
     submit.pWaitDstStageMask = &waitStage;
     submit.waitSemaphoreCount = 1;
-    submit.pWaitSemaphores = &_presentSemaphore;
+    submit.pWaitSemaphores = &get_current_frame()._presentSemaphore;
 
     submit.signalSemaphoreCount = 1;
-    submit.pSignalSemaphores = &_renderSemaphore;
+    submit.pSignalSemaphores = &get_current_frame()._renderSemaphore;
 
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &cmd;
 
-    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _renderFence));
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, get_current_frame()._renderFence));
 
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -566,7 +494,7 @@ void Spock::draw() {
     presentInfo.pSwapchains = &_swapchain;
 
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &_renderSemaphore;
+    presentInfo.pWaitSemaphores = &get_current_frame()._renderSemaphore;
 
     presentInfo.pImageIndices = &swapchainImageIndex;
 
@@ -594,12 +522,41 @@ void Spock::run() {
                     SDL_PushEvent(&ev);
                 }
 
-                if (e.key.keysym.sym == SDLK_SPACE) {
-                    _selectedShader += 1;
-                    if(_selectedShader > 2) {
-                        _selectedShader = 0;
-                    }
+                const float mvConst = .2f;
+
+                if (e.key.keysym.sym == SDLK_w) {
+                    _appState.camPos.z += mvConst;
                 }
+
+                if (e.key.keysym.sym == SDLK_s) {
+                    _appState.camPos.z += -mvConst;
+                }
+
+                if (e.key.keysym.sym == SDLK_a) {
+                    _appState.camPos.x += mvConst;
+                }
+
+                if (e.key.keysym.sym == SDLK_d) {
+                    _appState.camPos.x += -mvConst;
+                }
+
+                if (e.key.keysym.sym == SDLK_z) {
+                    _appState.camPos.y += mvConst;
+                }
+
+                if (e.key.keysym.sym == SDLK_x) {
+                    _appState.camPos.y += -mvConst;
+                }
+
+
+
+
+//                if (e.key.keysym.sym == SDLK_SPACE) {
+//                    _selectedShader += 1;
+//                    if(_selectedShader > 2) {
+//                        _selectedShader = 0;
+//                    }
+//                }
             }
         }
 
@@ -607,7 +564,7 @@ void Spock::run() {
     }
 }
 
-bool Spock::load_shader_module(const char *filePath, VkShaderModule *outShaderModule) {
+bool Spock::load_shader_module(filesystem::path filePath, VkShaderModule *outShaderModule) {
     std::ifstream file(filePath, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
@@ -641,21 +598,38 @@ bool Spock::load_shader_module(const char *filePath, VkShaderModule *outShaderMo
 
 }
 
+void Spock::load_shader_module_from_path(filesystem::path filePath, VkShaderModule *outShaderModule) {
+    auto fn = filePath.filename();
+
+    if (!load_shader_module(filePath, outShaderModule))
+    {
+        std::cout << "Error when building " << fn  << " " << std::endl;
+    }
+    else {
+        std::cout << fn << " shader loaded" << std::endl;
+    }
+}
+
 void Spock::load_meshes() {
-    _triangleMesh._vertices.resize(3);
+    Mesh triMesh;
+    triMesh._vertices.resize(3);
 
-    _triangleMesh._vertices[0].position = {1.f, 1.f, 0.f};
-    _triangleMesh._vertices[1].position = {-1.f, 1.f, 0.f};
-    _triangleMesh._vertices[2].position = {0.f, -1.f, 0.f};
+    triMesh._vertices[0].position = {1.f, 1.f, 0.f};
+    triMesh._vertices[1].position = {-1.f, 1.f, 0.f};
+    triMesh._vertices[2].position = {0.f, -1.f, 0.f};
 
-    _triangleMesh._vertices[0].color = {0.f, 1.f, 0.f};
-    _triangleMesh._vertices[1].color = {0.f, 1.f, 0.f};
-    _triangleMesh._vertices[2].color = {0.f, 1.f, 0.f};
+    triMesh._vertices[0].color = {0.f, 1.f, 0.f};
+    triMesh._vertices[1].color = {0.f, 1.f, 0.f};
+    triMesh._vertices[2].color = {0.f, 1.f, 0.f};
 
-    _monkeyMesh.load_from_obj("../../assets/monkey_smooth.obj");
+    Mesh monkMesh;
+    monkMesh.load_from_obj("../../assets/monkey_smooth.obj");
 
-    upload_mesh(_triangleMesh);
-    upload_mesh(_monkeyMesh);
+    upload_mesh(triMesh);
+    upload_mesh(monkMesh);
+
+    _meshes["monkey"] = monkMesh;
+    _meshes["triangle"] = triMesh;
 
 
 }
@@ -683,6 +657,288 @@ void Spock::upload_mesh(Mesh &mesh) {
     memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
     vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
 
+}
+
+Material *Spock::create_material(VkPipeline pipeline, VkPipelineLayout layout, const string &name) {
+    Material mat{};
+    mat.pipeline = pipeline;
+    mat.pipelineLayout = layout;
+    _materials[name] = mat;
+    return &_materials[name];
+}
+
+Material *Spock::get_material(const string &name) {
+    auto it = _materials.find(name);
+    if (it == _materials.end()) {
+        return nullptr;
+    } else {
+        return &(*it).second;
+    }
+}
+
+Mesh *Spock::get_mesh(const string &name) {
+    auto it = _meshes.find(name);
+    if (it == _meshes.end()) {
+        return nullptr;
+    } else {
+        return &(*it).second;
+    }
+}
+
+void Spock::draw_objects(VkCommandBuffer cmd, RenderObject *first, int count) {
+    glm::vec3 camPos = { 0.f, -6.f, -10.f };
+
+    glm::mat4 view = glm::translate(glm::mat4(1.f), _appState.camPos);
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+    projection[1][1] *= -1;
+
+    GPUCameraData camData;
+    camData.projection = projection;
+    camData.view = view;
+    camData.viewproj = projection * view;
+
+    void* data;
+    vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
+    memcpy(data, &camData, sizeof(GPUCameraData));
+    vmaUnmapMemory(_allocator, get_current_frame().cameraBuffer._allocation);
+
+    float framed = (_frameNumber / 120.f);
+
+    _sceneParameters.ambientColor = { sin(framed), 0, cos(framed), 1 };
+
+    char* sceneData;
+    vmaMapMemory(_allocator, _sceneParametersBuffer._allocation, (void**)&sceneData);
+
+    int frameIndex = _frameNumber % FRAME_OVERLAP;
+
+    sceneData += pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
+
+    memcpy(sceneData, &_sceneParameters, sizeof(GPUSceneData));
+
+    vmaUnmapMemory(_allocator, _sceneParametersBuffer._allocation);
+
+    void* objectData;
+    vmaMapMemory(_allocator, get_current_frame().objectBuffer._allocation, &objectData);
+
+    GPUObjectData* objectSSBO = (GPUObjectData*)objectData;
+
+    for (int i = 0; i < count; i++) {
+        RenderObject& object = first[i];
+        objectSSBO[i].modelMatrix = object.transformMatrix;
+    }
+
+    vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
+
+    Mesh* lastMesh = nullptr;
+    Material* lastMaterial = nullptr;
+    for (int i = 0; i < count; i++) {
+        RenderObject& object = first[i];
+
+        if (object.material != lastMaterial) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
+            lastMaterial = object.material;
+
+            uint32_t uniform_offset = pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
+
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    object.material->pipelineLayout, 0, 1,
+                                    &get_current_frame().globalDescriptor, 1, &uniform_offset);
+
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    object.material->pipelineLayout, 1, 1,
+                                    &get_current_frame().objectDescriptor, 0, nullptr);
+        }
+
+        MeshPushConstants constants{};
+        constants.render_matrix = object.transformMatrix;
+
+        vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+                           0, sizeof(MeshPushConstants), &constants);
+
+        if (object.mesh != lastMesh) {
+            VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->_vertexBuffer._buffer, &offset);
+            lastMesh = object.mesh;
+        }
+
+        vkCmdDraw(cmd, object.mesh->_vertices.size(), 1, 0, i);
+    }
+}
+
+void Spock::init_scene() {
+    RenderObject monkey{};
+    monkey.mesh = get_mesh("monkey");
+    monkey.material = get_material("defaultmesh");
+    monkey.transformMatrix = glm::mat4 {1.f};
+
+    _renderables.push_back(monkey);
+
+    for (int x = -20; x <= 20; x++) {
+        for (int y = -20; y <= 20; y++) {
+            RenderObject tri{};
+            tri.mesh = get_mesh("triangle");
+            tri.material = get_material("defaultmesh");
+            glm::mat4 translation = glm::translate(glm::mat4{1.0}, glm::vec3(x, 0, y));
+            glm::mat4 scale = glm::scale(glm::mat4{1.0}, glm::vec3(0.2, 0.2, 0.2));
+            tri.transformMatrix = translation * scale;
+
+            _renderables.push_back(tri);
+        }
+    }
+
+}
+
+FrameData &Spock::get_current_frame() {
+    return _frames[_frameNumber % FRAME_OVERLAP];
+}
+
+AllocatedBuffer Spock::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage) {
+    VkBufferCreateInfo bufferCreateInfo = {};
+    bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferCreateInfo.pNext = nullptr;
+
+    bufferCreateInfo.size = allocSize;
+    bufferCreateInfo.usage = usage;
+
+    VmaAllocationCreateInfo vmaallocInfo = {};
+    vmaallocInfo.usage = memUsage;
+
+    AllocatedBuffer newBuffer;
+
+    VK_CHECK(vmaCreateBuffer(_allocator, &bufferCreateInfo,
+                                &vmaallocInfo, &newBuffer._buffer, &newBuffer._allocation,
+                                nullptr));
+
+
+
+    return newBuffer;
+}
+
+void Spock::init_descriptors() {
+    const size_t sceneParamBufferSize = FRAME_OVERLAP * pad_uniform_buffer_size(sizeof(GPUSceneData));
+    _sceneParametersBuffer = create_buffer(sceneParamBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    std::vector<VkDescriptorPoolSize> sizes = {
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10},
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 }
+    };
+
+    VkDescriptorPoolCreateInfo  pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.pNext = nullptr;
+
+    pool_info.flags = 0;
+    pool_info.maxSets = 10;
+    pool_info.poolSizeCount = (uint32_t)sizes.size();
+    pool_info.pPoolSizes = sizes.data();
+
+    vkCreateDescriptorPool(_device, &pool_info, nullptr, &_descriptorPool);
+
+    VkDescriptorSetLayoutBinding cameraBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT,0);
+
+    VkDescriptorSetLayoutBinding sceneBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1);
+
+
+    VkDescriptorSetLayoutBinding bindings[] = { cameraBind, sceneBind };
+
+    VkDescriptorSetLayoutCreateInfo setInfo = {};
+    setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    setInfo.pNext = nullptr;
+
+    setInfo.bindingCount = 2;
+    setInfo.flags = 0;
+    setInfo.pBindings = bindings;
+
+    vkCreateDescriptorSetLayout(_device, &setInfo, nullptr, &_globalSetLayout);
+
+    VkDescriptorSetLayoutBinding objectBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
+
+    VkDescriptorSetLayoutCreateInfo set2info = {};
+    set2info.bindingCount = 1;
+    set2info.flags = 0;
+    set2info.pNext = nullptr;
+    set2info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    set2info.pBindings = &objectBind;
+
+    vkCreateDescriptorSetLayout(_device, &set2info, nullptr, &_objectSetLayout);
+
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        const int MAX_OBJECTS = 10000;
+        _frames[i].objectBuffer = create_buffer(sizeof(GPUObjectData) * MAX_OBJECTS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        _frames[i].cameraBuffer = create_buffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        VkDescriptorSetAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.pNext = nullptr;
+
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.descriptorPool = _descriptorPool;
+        allocInfo.pSetLayouts = &_globalSetLayout;
+
+        vkAllocateDescriptorSets(_device, &allocInfo, &_frames[i].globalDescriptor);
+
+        VkDescriptorSetAllocateInfo objSetAllocInfo = {};
+        objSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        objSetAllocInfo.pNext = nullptr;
+
+        objSetAllocInfo.descriptorSetCount = 1;
+        objSetAllocInfo.descriptorPool = _descriptorPool;
+        objSetAllocInfo.pSetLayouts = &_objectSetLayout;
+
+        vkAllocateDescriptorSets(_device, &objSetAllocInfo, &_frames[i].objectDescriptor);
+
+        VkDescriptorBufferInfo cameraInfo = {};
+        cameraInfo.buffer = _frames[i].cameraBuffer._buffer;
+        cameraInfo.offset = 0;
+        cameraInfo.range = sizeof(GPUCameraData);
+
+        VkDescriptorBufferInfo sceneInfo = {};
+        sceneInfo.buffer = _sceneParametersBuffer._buffer;
+        sceneInfo.offset = 0;
+        sceneInfo.range = sizeof(GPUSceneData);
+
+        VkDescriptorBufferInfo objectBufferInfo = {};
+        objectBufferInfo.buffer = _frames[i].objectBuffer._buffer;
+        objectBufferInfo.offset = 0;
+        objectBufferInfo.range = sizeof(GPUObjectData) * MAX_OBJECTS;
+
+
+        VkWriteDescriptorSet cameraWrite = vkinit::write_decriptor_buffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _frames[i].globalDescriptor, &cameraInfo, 0);
+        VkWriteDescriptorSet sceneWrite = vkinit::write_decriptor_buffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, _frames[i].globalDescriptor, &sceneInfo, 1);
+        VkWriteDescriptorSet objectWrite = vkinit::write_decriptor_buffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, _frames[i].objectDescriptor, &objectBufferInfo, 0);
+
+        VkWriteDescriptorSet setWrites[] = { cameraWrite, sceneWrite, objectWrite };
+
+        uint setWritesCount = std::size(setWrites);
+        vkUpdateDescriptorSets(_device, setWritesCount, setWrites, 0, nullptr);
+
+    }
+
+    _mainDeletionQueue.push_function([=](){
+
+        vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
+        vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
+        vmaDestroyBuffer(_allocator, _sceneParametersBuffer._buffer, _sceneParametersBuffer._allocation);
+
+
+        for (int i = 0; i < FRAME_OVERLAP; i++) {
+            vmaDestroyBuffer(_allocator, _frames[i].cameraBuffer._buffer, _frames[i].cameraBuffer._allocation);
+            vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
+        }
+    });
+
+}
+
+size_t Spock::pad_uniform_buffer_size(size_t originalSize) {
+    size_t minUboAlignment = _gpuProperties.limits.minUniformBufferOffsetAlignment;
+    size_t alignedSize = originalSize;
+    if (minUboAlignment > 0) {
+        alignedSize = (alignedSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    }
+    return alignedSize;
 }
 
 VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
@@ -734,5 +990,6 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
     }
 
 }
+
 
 
