@@ -46,8 +46,14 @@ namespace spock {
     };
 
     struct Material {
+        VkDescriptorSet textureSet{VK_NULL_HANDLE};
         VkPipeline pipeline;
         VkPipelineLayout pipelineLayout;
+    };
+
+    struct Texture {
+        AllocatedImage image;
+        VkImageView imageView;
     };
 
     struct RenderObject {
@@ -72,6 +78,11 @@ namespace spock {
 
     struct GPUObjectData {
         glm::mat4 modelMatrix;
+    };
+
+    struct UploadContext {
+        VkFence _uploadFence;
+        VkCommandPool _commandPool;
     };
 
     struct AppState {
@@ -126,16 +137,18 @@ namespace spock {
         VkRenderPass _renderPass;
         std::vector<VkFramebuffer> _framebuffers;
         FrameData _frames[FRAME_OVERLAP];
+        UploadContext _uploadContext;
 
         VkDescriptorSetLayout _globalSetLayout;
         VkDescriptorSetLayout _objectSetLayout;
+        VkDescriptorSetLayout _singleTextureSetLayout;
 
         VkDescriptorPool _descriptorPool;
 
         GPUSceneData _sceneParameters;
         AllocatedBuffer _sceneParametersBuffer;
 
-        VkPipeline _meshPipeline;
+        //VkPipeline _meshPipeline;
 
         VkImageView _depthImageView;
         AllocatedImage _depthImage;
@@ -145,14 +158,21 @@ namespace spock {
         std::vector<RenderObject> _renderables;
         std::unordered_map<std::string, Material> _materials;
         std::unordered_map<std::string, Mesh> _meshes;
+        std::unordered_map<std::string, Texture> _loadedTextures;
+
 
         Material* create_material(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
         Material* get_material(const std::string& name);
 
         Mesh* get_mesh(const std::string& name);
 
+        void load_images();
+
         FrameData& get_current_frame();
         AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);
+
+        void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
+
         void init();
 
         void cleanup();

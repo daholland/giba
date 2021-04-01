@@ -15,14 +15,14 @@ add_executable(giba
             spock/spock.h
             spock/vk_types.h
             spock/vk_init.h
-            spock/vk_init.cpp spock/vk_mesh.cpp spock/vk_mesh.h)
+            spock/vk_init.cpp spock/vk_mesh.cpp spock/vk_mesh.h spock/vk_textures.cpp spock/vk_textures.h)
 
 target_include_directories(giba PUBLIC spock/ gibalib/)
 target_link_libraries(giba ${Vulkan_LIBRARIES})
 
 target_link_libraries(giba ${SDL2_LIBRARIES})
 
-target_link_libraries(giba vkbootstrap vma glm tinyobjloader)
+target_link_libraries(giba vkbootstrap vma glm tinyobjloader stb_image)
 target_link_libraries(giba imgui)
 
 target_link_libraries(giba sqlite_orm::sqlite_orm)
@@ -52,7 +52,7 @@ message(STATUS "${SPIRV_BINARY_FILES}")
 
 add_custom_target(
         Shaders ALL
-        COMMENT "building shaders..."
+        COMMENT "building shaders...."
         DEPENDS ${SPIRV_BINARY_FILES}
 )
 

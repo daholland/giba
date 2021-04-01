@@ -9,6 +9,7 @@
 
 #include <vk_types.h>
 #include <vk_init.h>
+#include <vk_textures.h>
 
 #include "VkBootstrap.h"
 
@@ -69,6 +70,7 @@ void Spock::init() {
     init_pipelines();
 
     load_meshes();
+    load_images();
 
     init_scene();
 
@@ -176,6 +178,13 @@ void Spock::init_swapchain() {
 void Spock::init_commands() {
 
     VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    VkCommandPoolCreateInfo uploadCommandPoolInfo = vkinit::command_pool_create_info(_graphicsQueueFamily);
+
+    VK_CHECK(vkCreateCommandPool(_device, &uploadCommandPoolInfo, nullptr, &_uploadContext._commandPool));
+    _mainDeletionQueue.push_function([=]() {
+       vkDestroyCommandPool(_device, _uploadContext._commandPool, nullptr);
+    });
+
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         VK_CHECK(vkCreateCommandPool(_device, &commandPoolInfo, nullptr, &_frames[i]._commandPool));
@@ -278,7 +287,15 @@ void Spock::init_framebuffers() {
 
 void Spock::init_sync_structures() {
     VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
+    VkFenceCreateInfo uploadFenceCreateInfo = vkinit::fence_create_info();
+
+    VK_CHECK(vkCreateFence(_device, &uploadFenceCreateInfo, nullptr, &_uploadContext._uploadFence));
+    _mainDeletionQueue.push_function([=](){
+       vkDestroyFence(_device, _uploadContext._uploadFence, nullptr);
+    });
+
     VkSemaphoreCreateInfo semaphoreCreateInfo = vkinit::semaphore_create_info();
+
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i]._renderFence));
@@ -318,6 +335,18 @@ void Spock::init_pipelines() {
     VkPipelineLayout meshPipelineLayout;
     VK_CHECK(vkCreatePipelineLayout(_device, &mesh_pipeline_layout_info, nullptr, &meshPipelineLayout));
 
+    VkPipelineLayoutCreateInfo textured_pipeline_layout_info = mesh_pipeline_layout_info;
+
+    VkDescriptorSetLayout texturedSetLayouts[] = { _globalSetLayout,
+                                                   _objectSetLayout,
+                                                   _singleTextureSetLayout };
+
+    textured_pipeline_layout_info.setLayoutCount = std::size(texturedSetLayouts);
+    textured_pipeline_layout_info.pSetLayouts = texturedSetLayouts;
+
+    VkPipelineLayout texturedPipeLayout;
+    VK_CHECK(vkCreatePipelineLayout(_device, &textured_pipeline_layout_info, nullptr, &texturedPipeLayout));
+
 
     PipelineBuilder pipelineBuilder;
 
@@ -344,8 +373,12 @@ void Spock::init_pipelines() {
 
     VkShaderModule meshVertShader;
     load_shader_module_from_path("../../src/shaders/tri_mesh.vert.spv", &meshVertShader);
+
     VkShaderModule colorMeshShader;
     load_shader_module_from_path("../../src/shaders/default_lit.frag.spv", &colorMeshShader);
+
+    VkShaderModule texturedMeshShader;
+    load_shader_module_from_path("../../src/shaders/textured_lit.frag.spv", &texturedMeshShader);
 
     VertexInputDescription vertexDescription = Vertex::get_vertex_description();
 
@@ -361,19 +394,34 @@ void Spock::init_pipelines() {
     pipelineBuilder._shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, colorMeshShader));
 
     pipelineBuilder._pipelineLayout = meshPipelineLayout;
-    _meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+    VkPipeline meshPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
 
-    create_material(_meshPipeline, meshPipelineLayout, "defaultmesh");
+    create_material(meshPipeline, meshPipelineLayout, "defaultmesh");
+
+    pipelineBuilder._shaderStages.clear();
+    pipelineBuilder._shaderStages.push_back(
+            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
+    pipelineBuilder._shaderStages.push_back(
+            vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, texturedMeshShader));
+
+    pipelineBuilder._pipelineLayout = texturedPipeLayout;
+    VkPipeline texPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+    create_material(texPipeline, texturedPipeLayout, "texturedmesh");
+
+
 
     //clean
     vkDestroyShaderModule(_device, meshVertShader, nullptr);
     vkDestroyShaderModule(_device, colorMeshShader, nullptr);
+    vkDestroyShaderModule(_device, texturedMeshShader, nullptr);
 
     _mainDeletionQueue.push_function([=](){
 
-       vkDestroyPipeline(_device, _meshPipeline, nullptr);
+       vkDestroyPipeline(_device, meshPipeline, nullptr);
+       vkDestroyPipeline(_device, texPipeline, nullptr);
 
        vkDestroyPipelineLayout(_device, meshPipelineLayout, nullptr);
+        vkDestroyPipelineLayout(_device, texturedPipeLayout, nullptr);
 
     });
 
@@ -426,11 +474,7 @@ void Spock::draw() {
 
     VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
 
-    VkCommandBufferBeginInfo cmdBeginInfo = {};
-    cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmdBeginInfo.pNext = nullptr;
-    cmdBeginInfo.pInheritanceInfo = nullptr;
-    cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -468,10 +512,7 @@ void Spock::draw() {
 
     VK_CHECK(vkEndCommandBuffer(cmd));
 
-    VkSubmitInfo submit = {};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.pNext = nullptr;
-
+    VkSubmitInfo submit = vkinit::submit_info(&cmd);
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
     submit.pWaitDstStageMask = &waitStage;
@@ -625,37 +666,72 @@ void Spock::load_meshes() {
     Mesh monkMesh;
     monkMesh.load_from_obj("../../assets/monkey_smooth.obj");
 
+    Mesh lostEmpire{};
+    lostEmpire.load_from_obj("../../assets/lost_empire.obj");
+
     upload_mesh(triMesh);
     upload_mesh(monkMesh);
+    upload_mesh(lostEmpire);
 
     _meshes["monkey"] = monkMesh;
     _meshes["triangle"] = triMesh;
-
+    _meshes["empire"] = lostEmpire;
 
 }
 
 void Spock::upload_mesh(Mesh &mesh) {
-    VkBufferCreateInfo bufferInfo = {};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = mesh._vertices.size() * sizeof(Vertex);
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    const size_t bufferSize = mesh._vertices.size() * sizeof(Vertex);
+
+    VkBufferCreateInfo stagingBufferInfo = {};
+    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingBufferInfo.pNext = nullptr;
+
+    stagingBufferInfo.size = bufferSize;
+    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
     VmaAllocationCreateInfo vmaAllocInfo = {};
-    vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+    vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
 
-    VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaAllocInfo,
+    AllocatedBuffer stagingBuffer;
+
+    VK_CHECK(vmaCreateBuffer(_allocator, &stagingBufferInfo, &vmaAllocInfo,
+                             &stagingBuffer._buffer,
+                             &stagingBuffer._allocation,
+                             nullptr));
+
+    void* data;
+    vmaMapMemory(_allocator, stagingBuffer._allocation, &data);
+    memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
+    vmaUnmapMemory(_allocator, stagingBuffer._allocation);
+
+    VkBufferCreateInfo vertexBufferInfo = {};
+    vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    vertexBufferInfo.pNext = nullptr;
+
+    vertexBufferInfo.size = bufferSize;
+    vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    vmaAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    VK_CHECK(vmaCreateBuffer(_allocator, &vertexBufferInfo, &vmaAllocInfo,
                              &mesh._vertexBuffer._buffer,
                              &mesh._vertexBuffer._allocation,
                              nullptr));
 
+    immediate_submit([=](VkCommandBuffer cmd) {
+        VkBufferCopy copy;
+        copy.dstOffset = 0;
+        copy.srcOffset = 0;
+        copy.size = bufferSize;
+        vkCmdCopyBuffer(cmd, stagingBuffer._buffer, mesh._vertexBuffer._buffer, 1, &copy);
+    });
+
+
+
     _mainDeletionQueue.push_function([=]() {
        vmaDestroyBuffer(_allocator, mesh._vertexBuffer._buffer, mesh._vertexBuffer._allocation);
     });
-
-    void* data;
-    vmaMapMemory(_allocator, mesh._vertexBuffer._allocation, &data);
-    memcpy(data, mesh._vertices.data(), mesh._vertices.size() * sizeof(Vertex));
-    vmaUnmapMemory(_allocator, mesh._vertexBuffer._allocation);
+    vmaDestroyBuffer(_allocator, stagingBuffer._buffer, stagingBuffer._allocation);
 
 }
 
@@ -683,6 +759,21 @@ Mesh *Spock::get_mesh(const string &name) {
     } else {
         return &(*it).second;
     }
+}
+
+void Spock::load_images() {
+    Texture lostEmpire;
+    vkutil::load_image_from_file(*this, "../../assets/lost_empire-RGBA.png", lostEmpire.image);
+
+    VkImageViewCreateInfo imageinfo = vkinit::imageview_create_info(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkCreateImageView(_device, &imageinfo, nullptr, &lostEmpire.imageView);
+
+    _loadedTextures["empire_diffuse"] = lostEmpire;
+
+    _mainDeletionQueue.push_function([=](){
+       vkDestroyImageView(_device, lostEmpire.imageView , nullptr);
+    });
+
 }
 
 void Spock::draw_objects(VkCommandBuffer cmd, RenderObject *first, int count) {
@@ -747,6 +838,10 @@ void Spock::draw_objects(VkCommandBuffer cmd, RenderObject *first, int count) {
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     object.material->pipelineLayout, 1, 1,
                                     &get_current_frame().objectDescriptor, 0, nullptr);
+            if (object.material->textureSet != VK_NULL_HANDLE) {
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout,
+                                        2, 1, &object.material->textureSet, 0, nullptr);
+            }
         }
 
         MeshPushConstants constants{};
@@ -786,6 +881,44 @@ void Spock::init_scene() {
         }
     }
 
+    RenderObject map;
+    map.mesh = get_mesh("empire");
+    map.material = get_material("texturedmesh");
+    map.transformMatrix = glm::translate(glm::vec3{ 5, -10, 0 });
+
+    _renderables.push_back(map);
+
+    VkSamplerCreateInfo samplerInfo = vkinit::sampler_create_info(VK_FILTER_NEAREST);
+
+    VkSampler blockySampler;
+    vkCreateSampler(_device, &samplerInfo, nullptr, &blockySampler);
+
+    Material* texturedMat = get_material("texturedmesh");
+
+    VkDescriptorSetAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.pNext = nullptr;
+    allocInfo.descriptorPool = _descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &_singleTextureSetLayout;
+
+    vkAllocateDescriptorSets(_device, &allocInfo, &texturedMat->textureSet);
+
+    VkDescriptorImageInfo imageBufferInfo;
+    imageBufferInfo.sampler = blockySampler;
+    imageBufferInfo.imageView = _loadedTextures["empire_diffuse"].imageView;
+    imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkWriteDescriptorSet texture1 = vkinit::write_descriptor_image(
+                                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                         texturedMat->textureSet, &imageBufferInfo, 0);
+
+    vkUpdateDescriptorSets(_device, 1, &texture1, 0, nullptr);
+
+    _mainDeletionQueue.push_function([=](){
+        vkDestroySampler(_device, blockySampler, nullptr);
+    });
+
 }
 
 FrameData &Spock::get_current_frame() {
@@ -821,7 +954,8 @@ void Spock::init_descriptors() {
     std::vector<VkDescriptorPoolSize> sizes = {
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10},
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 }
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 }
     };
 
     VkDescriptorPoolCreateInfo  pool_info = {};
@@ -862,6 +996,17 @@ void Spock::init_descriptors() {
     set2info.pBindings = &objectBind;
 
     vkCreateDescriptorSetLayout(_device, &set2info, nullptr, &_objectSetLayout);
+
+    VkDescriptorSetLayoutBinding textureBind = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+
+    VkDescriptorSetLayoutCreateInfo set3info = {};
+    set3info.bindingCount = 1;
+    set3info.flags = 0;
+    set3info.pNext = nullptr;
+    set3info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    set3info.pBindings = &textureBind;
+
+    vkCreateDescriptorSetLayout(_device, &set3info, nullptr, &_singleTextureSetLayout);
 
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         const int MAX_OBJECTS = 10000;
@@ -920,6 +1065,8 @@ void Spock::init_descriptors() {
 
         vkDestroyDescriptorSetLayout(_device, _globalSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _objectSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _singleTextureSetLayout, nullptr);
+
         vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
         vmaDestroyBuffer(_allocator, _sceneParametersBuffer._buffer, _sceneParametersBuffer._allocation);
 
@@ -939,6 +1086,28 @@ size_t Spock::pad_uniform_buffer_size(size_t originalSize) {
         alignedSize = (alignedSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
     }
     return alignedSize;
+}
+
+void Spock::immediate_submit(function<void(VkCommandBuffer)> &&function) {
+    VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_uploadContext._commandPool, 1);
+    VkCommandBuffer cmd;
+    VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &cmd));
+
+    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+    function(cmd);
+
+    VK_CHECK(vkEndCommandBuffer(cmd));
+
+    VkSubmitInfo submit = vkinit::submit_info(&cmd);
+
+    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, _uploadContext._uploadFence));
+
+    vkWaitForFences(_device, 1, &_uploadContext._uploadFence, true, 999999999);
+    vkResetFences(_device, 1, &_uploadContext._uploadFence);
+
+    vkResetCommandPool(_device, _uploadContext._commandPool, 0);
 }
 
 VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {

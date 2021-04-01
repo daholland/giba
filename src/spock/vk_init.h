@@ -22,10 +22,18 @@ namespace vkinit {
     VkImageViewCreateInfo imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
     VkPipelineDepthStencilStateCreateInfo depth_stencil_create_info(bool bDepthTest, bool bDepthWrite, VkCompareOp compareOp);
     VkRenderPassBeginInfo renderpass_begin_info(VkRenderPass render, VkExtent2D extent, VkFramebuffer framebuffer);
-    VkFenceCreateInfo fence_create_info(VkFenceCreateFlags flags);
+    VkFenceCreateInfo fence_create_info(VkFenceCreateFlags flags = 0);
     VkSemaphoreCreateInfo semaphore_create_info(VkSemaphoreCreateFlags flags = 0);
     VkDescriptorSetLayoutBinding descriptorset_layout_binding(VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t binding);
     VkWriteDescriptorSet write_decriptor_buffer(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorBufferInfo* bufferInfo, uint32_t binding);
+
+    VkCommandBufferBeginInfo command_buffer_begin_info(VkCommandBufferUsageFlags usage);
+    VkSubmitInfo submit_info(VkCommandBuffer* command);
+
+    VkSamplerCreateInfo sampler_create_info(VkFilter filters, VkSamplerAddressMode samplerAddressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    VkWriteDescriptorSet write_descriptor_image(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding);
+
+
 }
 
 #endif //GIBA_VK_INIT_H

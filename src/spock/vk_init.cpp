@@ -244,5 +244,65 @@ namespace vkinit {
         return setWrite;
     }
 
+    VkCommandBufferBeginInfo command_buffer_begin_info(VkCommandBufferUsageFlags usage) {
+        VkCommandBufferBeginInfo cmdBeginInfo = {};
+        cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cmdBeginInfo.pNext = nullptr;
+        cmdBeginInfo.pInheritanceInfo = nullptr;
+        cmdBeginInfo.flags = usage;
+
+        return cmdBeginInfo;
+    }
+
+    VkSubmitInfo submit_info(VkCommandBuffer* command) {
+        VkSubmitInfo submit = {};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.pNext = nullptr;
+
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        submit.waitSemaphoreCount = 0;
+        submit.pWaitDstStageMask = nullptr;
+        submit.pWaitSemaphores = nullptr;
+
+        submit.signalSemaphoreCount = 0;
+        submit.pSignalSemaphores = nullptr;
+
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = command;
+
+        return submit;
+    }
+
+    VkSamplerCreateInfo sampler_create_info(VkFilter filters, VkSamplerAddressMode samplerAddressMode) {
+        VkSamplerCreateInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        info.pNext = nullptr;
+
+        info.magFilter = filters;
+        info.minFilter = filters;
+        info.addressModeU = samplerAddressMode;
+        info.addressModeV = samplerAddressMode;
+        info.addressModeW = samplerAddressMode;
+
+        return info;
+    }
+
+    VkWriteDescriptorSet
+    write_descriptor_image(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo *imageInfo,
+                           uint32_t binding) {
+        VkWriteDescriptorSet write = {};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.pNext = nullptr;
+
+        write.dstBinding = binding;
+        write.dstSet = dstSet;
+        write.descriptorCount = 1;
+        write.descriptorType = type;
+        write.pImageInfo = imageInfo;
+
+        return write;
+    }
+
 
 }
