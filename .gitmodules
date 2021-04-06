@@ -22,3 +22,6 @@
 [submodule "extlib/tinyobjloader"]
 	path = extlib/tinyobjloader
 	url = https://github.com/tinyobjloader/tinyobjloader
+[submodule "extlib/tracy"]
+	path = extlib/tracy
+	url = https://github.com/wolfpld/tracy

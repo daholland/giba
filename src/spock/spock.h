@@ -14,14 +14,17 @@
 #include <string>
 #include <filesystem>
 
+
+namespace tracy { class VkCtx; }
+
 ////
 constexpr uint FRAME_OVERLAP = 2;
 
 ////
 
-namespace {
-    typedef struct SDL_Window* SDL_Window_ptr;
-}
+
+typedef struct SDL_Window* SDL_Window_ptr;
+
 namespace spock {
     struct DeletionQueue {
         std::deque<std::function<void()>> deletors;
@@ -134,6 +137,8 @@ namespace spock {
         VkQueue _graphicsQueue;
         uint32_t _graphicsQueueFamily;
 
+        tracy::VkCtx* _graphicsQueueContext;
+
         VkRenderPass _renderPass;
         std::vector<VkFramebuffer> _framebuffers;
         FrameData _frames[FRAME_OVERLAP];
@@ -199,6 +204,8 @@ namespace spock {
         void init_pipelines();
 
         void init_scene();
+
+        void init_imgui();
 
         bool load_shader_module(std::filesystem::path filePath, VkShaderModule *outShaderModule);
         void load_shader_module_from_path(std::filesystem::path filePath, VkShaderModule *outShaderModule);

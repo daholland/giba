@@ -12,6 +12,8 @@
 
 
 
+
+
 bool vkutil::load_image_from_file(Spock &engine, std::filesystem::path file, AllocatedImage &outImage) {
     int texWidth, texHeight, texChannels;
 
@@ -53,62 +55,62 @@ bool vkutil::load_image_from_file(Spock &engine, std::filesystem::path file, All
     vmaCreateImage(engine._allocator, &dimg_info, &dimg_allocinfo, &newImage._image, &newImage._allocation, nullptr);
 
     engine.immediate_submit([&](VkCommandBuffer cmd) {
-       VkImageSubresourceRange range;
-       range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-       range.baseMipLevel = 0;
-       range.levelCount = 1;
-       range.baseArrayLayer = 0;
-       range.layerCount = 1;
+               VkImageSubresourceRange range;
+               range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+               range.baseMipLevel = 0;
+               range.levelCount = 1;
+               range.baseArrayLayer = 0;
+               range.layerCount = 1;
 
-       VkImageMemoryBarrier imageBarrier_toTransfer = {};
-       imageBarrier_toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+               VkImageMemoryBarrier imageBarrier_toTransfer = {};
+               imageBarrier_toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 
-       imageBarrier_toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-       imageBarrier_toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-       imageBarrier_toTransfer.image = newImage._image;
-       imageBarrier_toTransfer.subresourceRange = range;
+               imageBarrier_toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+               imageBarrier_toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+               imageBarrier_toTransfer.image = newImage._image;
+               imageBarrier_toTransfer.subresourceRange = range;
 
-       imageBarrier_toTransfer.srcAccessMask = 0;
-       imageBarrier_toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+               imageBarrier_toTransfer.srcAccessMask = 0;
+               imageBarrier_toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-       vkCmdPipelineBarrier(cmd,
-                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            0, 0, nullptr,
-                            0, nullptr,
-                            1,
-                            &imageBarrier_toTransfer);
+               vkCmdPipelineBarrier(cmd,
+                                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                    0, 0, nullptr,
+                                    0, nullptr,
+                                    1,
+                                    &imageBarrier_toTransfer);
 
-       VkBufferImageCopy copyRegion = {};
-       copyRegion.bufferOffset = 0;
-       copyRegion.bufferRowLength = 0;
-       copyRegion.bufferImageHeight = 0;
+               VkBufferImageCopy copyRegion = {};
+               copyRegion.bufferOffset = 0;
+               copyRegion.bufferRowLength = 0;
+               copyRegion.bufferImageHeight = 0;
 
-       copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-       copyRegion.imageSubresource.mipLevel = 0;
-       copyRegion.imageSubresource.baseArrayLayer = 0;
-       copyRegion.imageSubresource.layerCount = 1;
-       copyRegion.imageExtent = imageExtent;
+               copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+               copyRegion.imageSubresource.mipLevel = 0;
+               copyRegion.imageSubresource.baseArrayLayer = 0;
+               copyRegion.imageSubresource.layerCount = 1;
+               copyRegion.imageExtent = imageExtent;
 
-       vkCmdCopyBufferToImage(cmd, stagingBuffer._buffer, newImage._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+               vkCmdCopyBufferToImage(cmd, stagingBuffer._buffer, newImage._image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-       VkImageMemoryBarrier imageBarrier_toReadable = imageBarrier_toTransfer;
-       imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-       imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+               VkImageMemoryBarrier imageBarrier_toReadable = imageBarrier_toTransfer;
+               imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+               imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-       imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        imageBarrier_toReadable.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+               imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                imageBarrier_toReadable.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                             0, 0, nullptr,
-                             0, nullptr,
-                             1, &imageBarrier_toReadable);
+                vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                     0, 0, nullptr,
+                                     0, nullptr,
+                                     1, &imageBarrier_toReadable);
 
     });
 
     engine._mainDeletionQueue.push_function([=]() {
-       vmaDestroyImage(engine._allocator, newImage._image, newImage._allocation);
+        vmaDestroyImage(engine._allocator, newImage._image, newImage._allocation);
     });
 
     vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);

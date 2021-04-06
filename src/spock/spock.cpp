@@ -7,16 +7,24 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 
-#include <vk_types.h>
-#include <vk_init.h>
-#include <vk_textures.h>
-
 #include "VkBootstrap.h"
 
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
 #include <glm/gtx/transform.hpp>
+
+#include <imgui.h>
+#include <imgui_impl_sdl.h>
+#include <imgui_impl_vulkan.h>
+
+#include <vk_types.h>
+#include <vk_init.h>
+
+#include <vk_textures.h>
+
+#include "Tracy.hpp"
+#include "TracyVulkan.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -41,6 +49,7 @@ using namespace spock;
 
 
 void Spock::init() {
+    ZoneScopedN("Engine Init");
     SDL_Init(SDL_INIT_VIDEO);
 
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
@@ -73,6 +82,8 @@ void Spock::init() {
     load_images();
 
     init_scene();
+
+    init_imgui();
 
     //init_state();
     _appState = AppState {};
@@ -196,6 +207,7 @@ void Spock::init_commands() {
             vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
         });
     }
+    _graphicsQueueContext = TracyVkContext(_chosenGPU, _device, _graphicsQueue, _frames[0]._mainCommandBuffer);
 
 }
 
@@ -372,13 +384,13 @@ void Spock::init_pipelines() {
     pipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
     VkShaderModule meshVertShader;
-    load_shader_module_from_path("../../src/shaders/tri_mesh.vert.spv", &meshVertShader);
+    load_shader_module_from_path("../src/shaders/tri_mesh.vert.spv", &meshVertShader);
 
     VkShaderModule colorMeshShader;
-    load_shader_module_from_path("../../src/shaders/default_lit.frag.spv", &colorMeshShader);
+    load_shader_module_from_path("../src/shaders/default_lit.frag.spv", &colorMeshShader);
 
     VkShaderModule texturedMeshShader;
-    load_shader_module_from_path("../../src/shaders/textured_lit.frag.spv", &texturedMeshShader);
+    load_shader_module_from_path("../src/shaders/textured_lit.frag.spv", &texturedMeshShader);
 
     VertexInputDescription vertexDescription = Vertex::get_vertex_description();
 
@@ -448,6 +460,7 @@ void Spock::cleanup() {
         vkDeviceWaitIdle(_device);
 
         _mainDeletionQueue.flush();
+        TracyVkDestroy(_graphicsQueueContext);
 
         vmaDestroyAllocator(_allocator);
 
@@ -462,53 +475,70 @@ void Spock::cleanup() {
 }
 
 void Spock::draw() {
+    ZoneScopedN("Engine Draw");
 
-    VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
-    //vkDeviceWaitIdle(_device);
-    VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
+    ImGui::Render();
+    {
+        ZoneScopedN("Fence Wait");
+        VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
+        //vkDeviceWaitIdle(_device);
+        VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
 
-    VK_CHECK(vkResetCommandBuffer(get_current_frame()._mainCommandBuffer, 0));
+        VK_CHECK(vkResetCommandBuffer(get_current_frame()._mainCommandBuffer, 0));
+    }
 
     uint32_t swapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain,1000000000, get_current_frame()._presentSemaphore, nullptr, &swapchainImageIndex));
-
+    {
+        ZoneScopedNC("Acquire Next Image", tracy::Color::White);
+        VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._presentSemaphore, nullptr,
+                                       &swapchainImageIndex));
+    }
     VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
 
-    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(
+            VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     VkClearValue clearValue;
-    float flash = abs(sin((float)_frameNumber / 120.f));
-    clearValue.color = { { 0.0f, 0.0f, flash, 1.0f}};
+    float flash = abs(sin((float) _frameNumber / 120.f));
+    clearValue.color = {{0.0f, 0.0f, flash, 1.0f}};
+    {
+        TracyVkZone(_graphicsQueueContext, get_current_frame()._mainCommandBuffer, "All Frame");
+        ZoneScopedNC("Render Frame", tracy::Color::White);
 
-    VkClearValue depthClear;
-    depthClear.depthStencil.depth = 1.f;
+        VkClearValue depthClear;
+        depthClear.depthStencil.depth = 1.f;
 
-    VkRenderPassBeginInfo rpInfo = vkinit::renderpass_begin_info(_renderPass, _windowExtent, _framebuffers[swapchainImageIndex]);
-//    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-//    rpInfo.pNext = nullptr;
-//
-//    rpInfo.renderPass = _renderPass;
-//    rpInfo.renderArea.offset.x = 0;
-//    rpInfo.renderArea.offset.y = 0;
-//    rpInfo.renderArea.extent = _windowExtent;
-//    rpInfo.framebuffer = _framebuffers[swapchainImageIndex];
+        VkRenderPassBeginInfo rpInfo = vkinit::renderpass_begin_info(_renderPass, _windowExtent,
+                                                                     _framebuffers[swapchainImageIndex]);
+    //    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    //    rpInfo.pNext = nullptr;
+    //
+    //    rpInfo.renderPass = _renderPass;
+    //    rpInfo.renderArea.offset.x = 0;
+    //    rpInfo.renderArea.offset.y = 0;
+    //    rpInfo.renderArea.extent = _windowExtent;
+    //    rpInfo.framebuffer = _framebuffers[swapchainImageIndex];
 
-    VkClearValue clearValues[] = { clearValue, depthClear };
-    rpInfo.clearValueCount = 2;
-    rpInfo.pClearValues = &clearValues[0];
+        VkClearValue clearValues[] = {clearValue, depthClear};
+        rpInfo.clearValueCount = 2;
+        rpInfo.pClearValues = &clearValues[0];
 
-    //////////
-    vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+        //////////
+        vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    draw_objects(cmd, _renderables.data(), _renderables.size());
+        draw_objects(cmd, _renderables.data(), _renderables.size());
 
+        {
+            TracyVkZone(_graphicsQueueContext, get_current_frame()._mainCommandBuffer, "Imgui Draw");
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+        }
+        vkCmdEndRenderPass(cmd);
+        /////////////
+}
 
-
-
-    vkCmdEndRenderPass(cmd);
-    /////////////
+    TracyVkCollect(_graphicsQueueContext, get_current_frame()._mainCommandBuffer);
 
     VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -524,9 +554,10 @@ void Spock::draw() {
 
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &cmd;
-
-    VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, get_current_frame()._renderFence));
-
+    {
+        ZoneScopedN("Queue Submit");
+        VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &submit, get_current_frame()._renderFence));
+    }
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.pNext = nullptr;
@@ -538,9 +569,11 @@ void Spock::draw() {
     presentInfo.pWaitSemaphores = &get_current_frame()._renderSemaphore;
 
     presentInfo.pImageIndices = &swapchainImageIndex;
-
-    VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
-
+    {
+        ZoneScopedN("Queue Present");
+        VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentInfo));
+    }
+    FrameMark;
     _frameNumber++;
 }
 
@@ -549,45 +582,50 @@ void Spock::run() {
     bool bQuit = false;
 
     while (!bQuit) {
-        while (SDL_PollEvent(&e) != 0) {
-            if (e.type == SDL_QUIT
-                //|| (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_q)
-                ) {
-                bQuit = true;
-            }
-            else if (e.type == SDL_KEYDOWN) {
-                if (e.key.keysym.sym == SDLK_q) {
-                    SDL_Event ev;
-                    ev.type = SDL_QUIT;
+        ZoneScopedN("Main Loop");
+        {
+            ZoneScopedNC("Event Loop", tracy::Color::White);
 
-                    SDL_PushEvent(&ev);
-                }
+            while (SDL_PollEvent(&e) != 0) {
+                ImGui_ImplSDL2_ProcessEvent(&e);
 
-                const float mvConst = .2f;
+                if (e.type == SDL_QUIT
+                    //|| (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_q)
+                        ) {
+                    bQuit = true;
+                } else if (e.type == SDL_KEYDOWN) {
+                    if (e.key.keysym.sym == SDLK_q) {
+                        SDL_Event ev;
+                        ev.type = SDL_QUIT;
 
-                if (e.key.keysym.sym == SDLK_w) {
-                    _appState.camPos.z += mvConst;
-                }
+                        SDL_PushEvent(&ev);
+                    }
 
-                if (e.key.keysym.sym == SDLK_s) {
-                    _appState.camPos.z += -mvConst;
-                }
+                    const float mvConst = .2f;
 
-                if (e.key.keysym.sym == SDLK_a) {
-                    _appState.camPos.x += mvConst;
-                }
+                    if (e.key.keysym.sym == SDLK_w) {
+                        _appState.camPos.z += mvConst;
+                    }
 
-                if (e.key.keysym.sym == SDLK_d) {
-                    _appState.camPos.x += -mvConst;
-                }
+                    if (e.key.keysym.sym == SDLK_s) {
+                        _appState.camPos.z += -mvConst;
+                    }
 
-                if (e.key.keysym.sym == SDLK_z) {
-                    _appState.camPos.y += mvConst;
-                }
+                    if (e.key.keysym.sym == SDLK_a) {
+                        _appState.camPos.x += mvConst;
+                    }
 
-                if (e.key.keysym.sym == SDLK_x) {
-                    _appState.camPos.y += -mvConst;
-                }
+                    if (e.key.keysym.sym == SDLK_d) {
+                        _appState.camPos.x += -mvConst;
+                    }
+
+                    if (e.key.keysym.sym == SDLK_z) {
+                        _appState.camPos.y += mvConst;
+                    }
+
+                    if (e.key.keysym.sym == SDLK_x) {
+                        _appState.camPos.y += -mvConst * 2;
+                    }
 
 
 
@@ -598,9 +636,18 @@ void Spock::run() {
 //                        _selectedShader = 0;
 //                    }
 //                }
+                }
             }
         }
+        {
+            ZoneScopedNC("Imgui Logic", tracy::Color::Grey);
 
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplSDL2_NewFrame(_window);
+            ImGui::NewFrame();
+
+            ImGui::ShowDemoWindow();
+        }
         draw();
     }
 }
@@ -664,10 +711,10 @@ void Spock::load_meshes() {
     triMesh._vertices[2].color = {0.f, 1.f, 0.f};
 
     Mesh monkMesh;
-    monkMesh.load_from_obj("../../assets/monkey_smooth.obj");
+    monkMesh.load_from_obj("../assets/monkey_smooth.obj");
 
     Mesh lostEmpire{};
-    lostEmpire.load_from_obj("../../assets/lost_empire.obj");
+    lostEmpire.load_from_obj("../assets/lost_empire.obj");
 
     upload_mesh(triMesh);
     upload_mesh(monkMesh);
@@ -680,6 +727,7 @@ void Spock::load_meshes() {
 }
 
 void Spock::upload_mesh(Mesh &mesh) {
+    ZoneScopedNC("Upload Mesh", tracy::Color::Orange);
     const size_t bufferSize = mesh._vertices.size() * sizeof(Vertex);
 
     VkBufferCreateInfo stagingBufferInfo = {};
@@ -762,8 +810,10 @@ Mesh *Spock::get_mesh(const string &name) {
 }
 
 void Spock::load_images() {
+    ZoneScopedNC("Load Texture", tracy::Color::Yellow);
+
     Texture lostEmpire;
-    vkutil::load_image_from_file(*this, "../../assets/lost_empire-RGBA.png", lostEmpire.image);
+    vkutil::load_image_from_file(*this, "../assets/lost_empire-RGBA.png", lostEmpire.image);
 
     VkImageViewCreateInfo imageinfo = vkinit::imageview_create_info(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
     vkCreateImageView(_device, &imageinfo, nullptr, &lostEmpire.imageView);
@@ -788,38 +838,45 @@ void Spock::draw_objects(VkCommandBuffer cmd, RenderObject *first, int count) {
     camData.view = view;
     camData.viewproj = projection * view;
 
-    void* data;
-    vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
-    memcpy(data, &camData, sizeof(GPUCameraData));
-    vmaUnmapMemory(_allocator, get_current_frame().cameraBuffer._allocation);
-
+    {
+        ZoneScopedNC("CamBuffer Allocate", tracy::Color::Red);
+        void *data;
+        vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
+        memcpy(data, &camData, sizeof(GPUCameraData));
+        vmaUnmapMemory(_allocator, get_current_frame().cameraBuffer._allocation);
+    }
     float framed = (_frameNumber / 120.f);
 
     _sceneParameters.ambientColor = { sin(framed), 0, cos(framed), 1 };
 
-    char* sceneData;
-    vmaMapMemory(_allocator, _sceneParametersBuffer._allocation, (void**)&sceneData);
-
     int frameIndex = _frameNumber % FRAME_OVERLAP;
+    {
+        ZoneScopedNC("SceneBuffer Allocate", tracy::Color::Red);
+        char *sceneData;
+        vmaMapMemory(_allocator, _sceneParametersBuffer._allocation, (void **) &sceneData);
 
-    sceneData += pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
 
-    memcpy(sceneData, &_sceneParameters, sizeof(GPUSceneData));
+        sceneData += pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
 
-    vmaUnmapMemory(_allocator, _sceneParametersBuffer._allocation);
+        memcpy(sceneData, &_sceneParameters, sizeof(GPUSceneData));
 
-    void* objectData;
-    vmaMapMemory(_allocator, get_current_frame().objectBuffer._allocation, &objectData);
-
-    GPUObjectData* objectSSBO = (GPUObjectData*)objectData;
-
-    for (int i = 0; i < count; i++) {
-        RenderObject& object = first[i];
-        objectSSBO[i].modelMatrix = object.transformMatrix;
+        vmaUnmapMemory(_allocator, _sceneParametersBuffer._allocation);
     }
 
-    vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
+    {
+        ZoneScopedNC("ObjectBuffer Allocate", tracy::Color::Red);
+        void *objectData;
+        vmaMapMemory(_allocator, get_current_frame().objectBuffer._allocation, &objectData);
 
+        GPUObjectData *objectSSBO = (GPUObjectData *) objectData;
+
+        for (int i = 0; i < count; i++) {
+            RenderObject &object = first[i];
+            objectSSBO[i].modelMatrix = object.transformMatrix;
+        }
+
+        vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
+    }
     Mesh* lastMesh = nullptr;
     Material* lastMaterial = nullptr;
     for (int i = 0; i < count; i++) {
@@ -1089,6 +1146,8 @@ size_t Spock::pad_uniform_buffer_size(size_t originalSize) {
 }
 
 void Spock::immediate_submit(function<void(VkCommandBuffer)> &&function) {
+    ZoneScopedNC("Immediate Submit", tracy::Color::White);
+
     VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_uploadContext._commandPool, 1);
     VkCommandBuffer cmd;
     VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &cmd));
@@ -1108,6 +1167,60 @@ void Spock::immediate_submit(function<void(VkCommandBuffer)> &&function) {
     vkResetFences(_device, 1, &_uploadContext._uploadFence);
 
     vkResetCommandPool(_device, _uploadContext._commandPool, 0);
+}
+
+void Spock::init_imgui() {
+    VkDescriptorPoolSize pool_sizes[] =
+            {
+                    { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+                    { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+                    { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+                    { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+                    { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+                    { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+            };
+
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+
+    VkDescriptorPool imguiPool;
+    VK_CHECK(vkCreateDescriptorPool(_device, &pool_info, nullptr, &imguiPool));
+
+    ImGui::CreateContext();
+    ImGui::GetIO().IniFilename = NULL;
+
+    ImGui_ImplSDL2_InitForVulkan(_window);
+
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = _instance;
+    init_info.PhysicalDevice = _chosenGPU;
+    init_info.Device = _device;
+    init_info.Queue = _graphicsQueue;
+    init_info.DescriptorPool = imguiPool;
+    init_info.MinImageCount = 3;
+    init_info.ImageCount = 3;
+
+    ImGui_ImplVulkan_Init(&init_info, _renderPass);
+
+    immediate_submit([&](VkCommandBuffer cmd) {
+       ImGui_ImplVulkan_CreateFontsTexture(cmd);
+    });
+
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
+
+    _mainDeletionQueue.push_function([=]() {
+       vkDestroyDescriptorPool(_device, imguiPool, nullptr);
+       ImGui_ImplVulkan_Shutdown();
+    });
 }
 
 VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
