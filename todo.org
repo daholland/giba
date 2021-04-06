@@ -1,0 +1,15 @@
+* Giba
+** Misc
+*** DONE CMake refactor (pull giba down, add lib) 
+    CLOSED: [2021-04-06 Tue 12:51]
+** Gibalib
+*** TODO impl all
+**** TODO CPU
+**** TODO Memory
+**** TODO PPU
+**** TODO Draw
+**** TODO Input
+**** TODO Audio
+** Spock
+*** TODO split ownership of SDLWindow?
+*** TODO split out imgui?

@@ -4,7 +4,7 @@
 
 #ifndef GIBA_GIBALIB_H
 #define GIBA_GIBALIB_H
-namespace giba {
+namespace gibalib {
 
 class Gibalib {
     int foo;

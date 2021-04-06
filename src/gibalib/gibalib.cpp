@@ -4,7 +4,7 @@
 #include <iostream>
 #include "gibalib.h"
 
-using namespace giba;
+using namespace gibalib;
 
 Gibalib::Gibalib(int f) : foo{f} {}
 
