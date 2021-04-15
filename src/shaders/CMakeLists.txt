@@ -1,5 +1,15 @@
 find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
 
+function(add_spirv_shader SHADER_STAGE INPUT_FILE OUTPUT_FILE)
+    add_custom_command(
+            OUTPUT ${OUTPUT_FILE}
+            COMMAND "glslc -fshader-stage=${SHADER_STAGE} ${INPUT_FILE} -o ${OUTPUT_FILE}"
+            MAIN_DEPENDENCY ${INPUT_FILE}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+endfunction()
+
+
 file(GLOB_RECURSE GLSL_SOURCE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/*.frag"
         "${CMAKE_CURRENT_SOURCE_DIR}/*.vert"
@@ -22,3 +32,8 @@ endforeach(GLSL)
 
 message(STATUS "${SPIRV_BINARY_FILES}")
 
+add_custom_target(
+        Shaders ALL
+        COMMENT "building shaders...."
+        DEPENDS ${SPIRV_BINARY_FILES}
+)

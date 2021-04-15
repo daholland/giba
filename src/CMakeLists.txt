@@ -6,6 +6,7 @@
 
 add_subdirectory(gibalib)
 add_subdirectory(spock)
+add_subdirectory(shaders)
 
 
 
