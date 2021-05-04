@@ -78,10 +78,10 @@ void Spock::init() {
 
     init_pipelines();
 
-    load_meshes();
-    load_images();
+    //load_meshes();
+    //load_images();
 
-    init_scene();
+    //init_scene();
 
     init_imgui();
 
@@ -575,81 +575,6 @@ void Spock::draw() {
     }
     FrameMark;
     _frameNumber++;
-}
-
-void Spock::run() {
-    SDL_Event e;
-    bool bQuit = false;
-
-    while (!bQuit) {
-        ZoneScopedN("Main Loop");
-        {
-            ZoneScopedNC("Event Loop", tracy::Color::White);
-
-            while (SDL_PollEvent(&e) != 0) {
-                ImGui_ImplSDL2_ProcessEvent(&e);
-
-                if (e.type == SDL_QUIT
-                    //|| (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_q)
-                        ) {
-                    bQuit = true;
-                } else if (e.type == SDL_KEYDOWN) {
-                    if (e.key.keysym.sym == SDLK_q) {
-                        SDL_Event ev;
-                        ev.type = SDL_QUIT;
-
-                        SDL_PushEvent(&ev);
-                    }
-
-                    const float mvConst = .2f;
-
-                    if (e.key.keysym.sym == SDLK_w) {
-                        _appState.camPos.z += mvConst;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_s) {
-                        _appState.camPos.z += -mvConst;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_a) {
-                        _appState.camPos.x += mvConst;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_d) {
-                        _appState.camPos.x += -mvConst;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_z) {
-                        _appState.camPos.y += mvConst;
-                    }
-
-                    if (e.key.keysym.sym == SDLK_x) {
-                        _appState.camPos.y += -mvConst * 2;
-                    }
-
-
-
-
-//                if (e.key.keysym.sym == SDLK_SPACE) {
-//                    _selectedShader += 1;
-//                    if(_selectedShader > 2) {
-//                        _selectedShader = 0;
-//                    }
-//                }
-                }
-            }
-        }
-        {
-            ZoneScopedNC("Imgui Logic", tracy::Color::Grey);
-
-            ImGui_ImplVulkan_NewFrame();
-            ImGui_ImplSDL2_NewFrame(_window);
-            ImGui::NewFrame();
-
-            ImGui::ShowDemoWindow();
-        }
-        draw();
-    }
 }
 
 bool Spock::load_shader_module(filesystem::path filePath, VkShaderModule *outShaderModule) {

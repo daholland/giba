@@ -9,8 +9,13 @@ add_library(spock
         vk_textures.cpp
         vk_textures.h)
 
-target_link_libraries(spock ${Vulkan_LIBRARIES})
 target_include_directories(spock PRIVATE ./)
+#
+#set_target_properties(spock PROPERTIES COMPILE_FLAGS "-fsanitize=memory -fno-omit-frame-pointer -fPIE -fPIC -fsanitize-memory-track-origins -fno-optimize-sibling-calls -g -O1")
+#set_target_properties(spock PROPERTIES LINK_FLAGS "-fsanitize=memory -fno-omit-frame-pointer -fPIE -fPIC -fsanitize-memory-track-origins -fno-optimize-sibling-calls -g -O1")
+
+
+target_link_libraries(spock ${Vulkan_LIBRARIES})
 
 target_link_libraries(spock SDL2)
 

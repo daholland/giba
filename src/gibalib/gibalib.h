@@ -4,14 +4,119 @@
 
 #ifndef GIBA_GIBALIB_H
 #define GIBA_GIBALIB_H
+
+#include <filesystem>
+#include "opcodes.h"
+
 namespace gibalib {
+    class PPU {}; //technically a part of the cpu
+    class APU {};
+    class Input {
+    public:
+        bool A = false;
+        bool B = false;
+        bool Start = false;
+        bool Select = false;
+        bool Up = false;
+        bool Down = false;
+        bool Left = false;
+        bool Right = false;
+        uint8_t as_byte();
+    };
+    class LCD {
+        //should just focus on producing a bitmap representing the LCD;
+        //let spock take care of bitmap -> SDL -> screen drawing
+        // "The LCD controller operates on a 2^22 Hz = 4.194 MHz dot clock.
+        // An entire frame is 154 scanlines, 70224 dots, or 16.74 ms"
+    };
+    class Memory {
+    public:
+        void write(uint16_t address, uint8_t val);
+        void write(uint16_t address, uint16_t val);
+
+        uint8_t read_byte(uint16_t address);
+        uint16_t read_word(uint16_t address);
+    private:
+        std::array<uint8_t, 0xFFFF> mem{};
+    };
+
+    class MBC {
+        //different types, writing to rom in main memory
+        // controls bank selection
+        // various peripherals too here
+        //contains registers itself, use
+        //part of the cartridge
+    };
+    class Cartridge {
+    public:
+        std::vector<uint8_t> rom;
+        std::vector<uint8_t> ram;
+        //time? peripherals?
+        Cartridge();
+        explicit Cartridge(std::filesystem::path filePath);
+    };
+
+    class CPU {
+        friend class opcodes::opcodes;
+        //register class itself?
+        struct {
+            uint8_t A;
+            uint8_t F;
+            uint8_t B;
+            uint8_t C;
+            uint8_t D;
+            uint8_t E;
+            uint8_t H;
+            uint8_t L;
+            uint16_t PC;
+            uint16_t SP;
+        } reg;
+        uint16_t BC();
+        void BC(uint16_t);
+        uint16_t DE();
+        void DE(uint16_t);
+        uint16_t HL();
+        void HL(uint16_t);
+        //
+        //tick(); //t-cycle? m-cycle? probably t-cycle so ppu can do its thing?
+        const int clock_speed = 4.194304 * 1'000'000; //t-cycle
+        const int cycle_speed = clock_speed / 4; //m-cycle
+    };
+    class ColorCPU : CPU {
+        const int clock_speed = 4.194304 * 1'000'000 * 2;
+    };
+
+    class Motherboard {
+    public:
+        bool powerStatus = false;
+        void load_cart(std::unique_ptr<Cartridge> cartInserted);
+    private:
+        friend class Gibalib;
+        std::unique_ptr<Cartridge> cart{std::make_unique<Cartridge>()};
+        std::unique_ptr<Input> input{std::make_unique<Input>()};
+        std::unique_ptr<Memory> memory{std::make_unique<Memory>()};
+        std::unique_ptr<CPU> cpu{std::make_unique<CPU>()};
+    };
 
 class Gibalib {
-    int foo;
-
 public:
-    Gibalib(int f);
-    void debugtest();
+    Gibalib();
+    void cleanup();
+
+    bool load_cart_from_file(std::filesystem::path filePath);
+    void power_on(){ system->powerStatus = true; };
+    void power_off(){ system->powerStatus = false; };
+    void insert_cart_and_power_on(std::filesystem::path filePath);
+
+    [[nodiscard]] const Input& get_input() const;
+    void set_input(Input& input);
+
+    [[nodiscard]] const Cartridge& get_cart() const;
+
+    [[nodiscard]] const Memory& get_memory() const;
+private:
+    std::unique_ptr<Motherboard> system;
+
     /*
      * CPU
      * - Registers AF BC DE HL PC SP

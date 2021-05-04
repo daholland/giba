@@ -184,7 +184,7 @@ namespace spock {
 
         void draw();
         void draw_objects(VkCommandBuffer cmd, RenderObject* first, int count);
-        void run();
+
 
     private:
 

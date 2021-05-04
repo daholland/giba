@@ -25,3 +25,6 @@
 [submodule "extlib/tracy"]
 	path = extlib/tracy
 	url = https://github.com/wolfpld/tracy
+[submodule "extlib/Catch2"]
+	path = extlib/Catch2
+	url = https://github.com/catchorg/Catch2

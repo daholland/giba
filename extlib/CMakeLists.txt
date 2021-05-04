@@ -1,6 +1,7 @@
 find_package(Vulkan REQUIRED)
 add_subdirectory(SDL)
 
+#add_subdirectory(Catch2)
 add_subdirectory(sqlite_orm)
 
 add_library(vkbootstrap STATIC)
