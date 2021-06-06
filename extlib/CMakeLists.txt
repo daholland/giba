@@ -12,6 +12,8 @@ add_library(stb_image INTERFACE)
 
 add_library(tinyobjloader STATIC)
 
+add_subdirectory(fmt)
+
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 set(TRACY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tracy" CACHE FILEPATH "Path to Tracy")

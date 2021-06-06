@@ -133,8 +133,10 @@ int main(int argc, char* argv[]) {
 
     std::filesystem::path filepath = "../assets/roms/Tetris (World) (Rev 1).zip";
     gb->load_cart_from_file(filepath);
-
+    auto quuz = "asdf";
     spock->init();
+
+    gb->foobar();
 
     run(*spock, *gb, *uiState, *config);
 

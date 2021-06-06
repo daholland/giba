@@ -7,6 +7,8 @@
 
 #include <filesystem>
 #include "opcodes.h"
+#include <vector>
+
 
 namespace gibalib {
     class PPU {}; //technically a part of the cpu
@@ -56,31 +58,38 @@ namespace gibalib {
         explicit Cartridge(std::filesystem::path filePath);
     };
 
+    struct CPURegisters {
+        uint8_t A;
+        uint8_t F;
+        uint8_t B;
+        uint8_t C;
+        uint8_t D;
+        uint8_t E;
+        uint8_t H;
+        uint8_t L;
+        uint16_t PC;
+    };
+
     class CPU {
-        friend class opcodes::opcodes;
         //register class itself?
-        struct {
-            uint8_t A;
-            uint8_t F;
-            uint8_t B;
-            uint8_t C;
-            uint8_t D;
-            uint8_t E;
-            uint8_t H;
-            uint8_t L;
-            uint16_t PC;
-            uint16_t SP;
-        } reg;
+        CPURegisters registers;
+
+        const int cycle_speed = clock_speed / 4; //m-cycle
+        const int clock_speed = 4.194304 * 1'000'000; //t-cycle
+        const std::array<opcodes::Opcode, 256> opcodes = opcodes::OpCodeTable;
+        const std::array<opcodes::Opcode, 256> opcodes_prefixed = opcodes::PrefixOpCodeTable;
+
         uint16_t BC();
         void BC(uint16_t);
         uint16_t DE();
         void DE(uint16_t);
         uint16_t HL();
         void HL(uint16_t);
-        //
         //tick(); //t-cycle? m-cycle? probably t-cycle so ppu can do its thing?
-        const int clock_speed = 4.194304 * 1'000'000; //t-cycle
-        const int cycle_speed = clock_speed / 4; //m-cycle
+
+    public:
+        opcodes::Opcode fetch_opcode(uint8_t instruction);
+        opcodes::Opcode fetch_opcode_prefixed(uint8_t prefixed_instruction);
     };
     class ColorCPU : CPU {
         const int clock_speed = 4.194304 * 1'000'000 * 2;
@@ -107,6 +116,7 @@ public:
     void power_on(){ system->powerStatus = true; };
     void power_off(){ system->powerStatus = false; };
     void insert_cart_and_power_on(std::filesystem::path filePath);
+    void foobar();
 
     [[nodiscard]] const Input& get_input() const;
     void set_input(Input& input);

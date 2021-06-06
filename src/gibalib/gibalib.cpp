@@ -53,6 +53,11 @@ void Gibalib::set_input(Input& input) {
     *system->input = input;
 }
 
+void Gibalib::foobar() {
+   auto quuz = system->cpu->fetch_opcode(0x1E);
+   std::cout << "fetched mnemonic: " << quuz.Mnemonic << std::endl;
+}
+
 
 void Motherboard::load_cart(std::unique_ptr<Cartridge> cartInserted) {
     cart = std::move(cartInserted);
@@ -107,3 +112,9 @@ Cartridge::Cartridge(std::filesystem::path filePath) {
 }
 
 Cartridge::Cartridge() : rom{}, ram{} {};
+
+opcodes::Opcode CPU::fetch_opcode(uint8_t instruction) {
+    opcodes::Opcode fetched_op = opcodes[instruction];
+
+    return fetched_op;
+}

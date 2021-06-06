@@ -12,6 +12,7 @@
 #include "TracyVulkan.hpp"
 
 #include "ui.h"
+#include <fmt/core.h>
 
 void process_imgui_event(SDL_Event* ev, UiState& ui) {
     ImGui_ImplSDL2_ProcessEvent(ev);
@@ -70,8 +71,6 @@ void run_imgui(spock::Spock& spock, gibalib::Gibalib& gb, UiState& ui)
                     //mem_edit.DrawContents(data, data_size);
                 }
 
-
-
                 if (ImGui::CollapsingHeader("Cart")){
                     ImGui::Text("Info about Cart");
                     mem_edit.DrawContents(cartCopy.rom.data(), cartCopy.rom.size());
@@ -92,14 +91,9 @@ void run_imgui(spock::Spock& spock, gibalib::Gibalib& gb, UiState& ui)
                     ImGui::Checkbox("(Left)", &inputCopy.Left);
                     ImGui::Checkbox("(Right)", &inputCopy.Right);
 
-                    const char *bit_rep[16] = {
-                            [ 0] = "0000", [ 1] = "0001", [ 2] = "0010", [ 3] = "0011",
-                            [ 4] = "0100", [ 5] = "0101", [ 6] = "0110", [ 7] = "0111",
-                            [ 8] = "1000", [ 9] = "1001", [10] = "1010", [11] = "1011",
-                            [12] = "1100", [13] = "1101", [14] = "1110", [15] = "1111",
-                    };
+                    std::string inputbyte_fmt = fmt::format("binary: {0:b}", inputbyte);
 
-                    ImGui::Text("binary: %s%s", bit_rep[inputbyte >> 4], bit_rep[inputbyte & 0x0F]);
+                    ImGui::Text(inputbyte_fmt.c_str());
 
                     mem_edit.DrawContents(&inputbyte, sizeof(uint8_t));
 

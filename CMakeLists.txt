@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.16)
 project(giba)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)#temporarily 17 due to clion 2020.1 "std::ranges" bug:https://youtrack.jetbrains.com/issue/CPP-20238
 
 #set(ENV{ASAN_OPTIONS} "symbolize=1:suppressions=${CMAKE_SOURCE_DIR}/san.suppress")
 #set(ENV{LSAN_OPTIONS} "suppressions=${CMAKE_SOURCE_DIR}/san.suppress")
@@ -31,7 +31,7 @@ add_executable(giba src/main.cpp src/ui.cpp src/ui.h src/config.cpp src/config.h
 set_target_properties(giba PROPERTIES COMPILE_FLAGS "${GIBA_SANITIZE}")
 set_target_properties(giba PROPERTIES LINK_FLAGS "${GIBA_SANITIZE}")
 
-target_link_libraries(giba gibalib spock)
+target_link_libraries(giba gibalib spock fmt::fmt)
 target_include_directories(giba
         PRIVATE
         src/gibalib
