@@ -1,6 +1,11 @@
 #ifndef GIBA_UI_H
 #define GIBA_UI_H
+
+#include "SDL_events.h"
+#include "gibalib.h"
+#include "spock.h"
 #include <imgui.h>
+
 struct UiState {
     ImGuiWindowFlags window_flags = 0;
     bool p_open = true;

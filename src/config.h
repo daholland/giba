@@ -5,7 +5,7 @@
 #ifndef GIBA_CONFIG_H
 #define GIBA_CONFIG_H
 
-#include <SDL2/SDL.h>
+#include <SDL.h>
 
 struct ControlsConfig {
     SDL_KeyCode Up = SDLK_UP;

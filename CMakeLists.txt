@@ -36,7 +36,8 @@ target_include_directories(giba
         PRIVATE
         src/gibalib
         src/spock
-        extlib/imgui_extras)
+        extlib/imgui_extras
+        extlib/SDL/include)
 
 
 add_subdirectory(tests)

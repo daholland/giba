@@ -1,8 +1,8 @@
 #include <spock.h>
 #include <gibalib.h>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
+#include <SDL.h>
+#include <SDL_vulkan.h>
 
 #include "Tracy.hpp"
 #include "TracyVulkan.hpp"
@@ -131,7 +131,7 @@ int main(int argc, char* argv[]) {
     auto uiState = std::make_unique<UiState>();
     auto config = std::make_unique<AppConfig>();
 
-    std::filesystem::path filepath = "../assets/roms/Tetris (World) (Rev 1).zip";
+    std::filesystem::path filepath = "assets/roms/Tetris (World) (Rev 1).zip";
     gb->load_cart_from_file(filepath);
     auto quuz = "asdf";
     spock->init();

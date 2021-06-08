@@ -4,6 +4,8 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <span>
+
 #include "gibalib.h"
 
 using namespace gibalib;
@@ -91,6 +93,8 @@ Cartridge::Cartridge(std::filesystem::path filePath) {
 
     if (!file.is_open()) {
         std::cout << "Error when building " << filePath  << " " << std::endl;
+        std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
+
         throw exceptions::BadRomPathException(filePath.string());
     }
 

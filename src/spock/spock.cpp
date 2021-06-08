@@ -1,26 +1,25 @@
 //
 // Created by daholland on 3/23/21.
 //
-
 #include "spock.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
+#include <SDL.h>
 
+#include <SDL_vulkan.h>
 #include "VkBootstrap.h"
 
 #define VMA_IMPLEMENTATION
-#include <vk_mem_alloc.h>
 
+#include <vk_mem_alloc.h>
 #include <glm/gtx/transform.hpp>
 
 #include <imgui.h>
+
 #include <imgui_impl_sdl.h>
 #include <imgui_impl_vulkan.h>
-
 #include <vk_types.h>
-#include <vk_init.h>
 
+#include <vk_init.h>
 #include <vk_textures.h>
 
 #include "Tracy.hpp"
@@ -29,8 +28,6 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-
-
 
 using namespace std;
 using namespace spock;
@@ -384,13 +381,13 @@ void Spock::init_pipelines() {
     pipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
     VkShaderModule meshVertShader;
-    load_shader_module_from_path("../src/shaders/tri_mesh.vert.spv", &meshVertShader);
+    load_shader_module_from_path("src/shaders/tri_mesh.vert.spv", &meshVertShader);
 
     VkShaderModule colorMeshShader;
-    load_shader_module_from_path("../src/shaders/default_lit.frag.spv", &colorMeshShader);
+    load_shader_module_from_path("src/shaders/default_lit.frag.spv", &colorMeshShader);
 
     VkShaderModule texturedMeshShader;
-    load_shader_module_from_path("../src/shaders/textured_lit.frag.spv", &texturedMeshShader);
+    load_shader_module_from_path("src/shaders/textured_lit.frag.spv", &texturedMeshShader);
 
     VertexInputDescription vertexDescription = Vertex::get_vertex_description();
 
