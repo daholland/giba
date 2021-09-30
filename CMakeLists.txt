@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(giba)
 
-set(CMAKE_CXX_STANDARD 17)#temporarily 17 due to clion 2020.1 "std::ranges" bug:https://youtrack.jetbrains.com/issue/CPP-20238
+set(CMAKE_CXX_STANDARD 20)#temporarily 17 due to clion 2020.1 "std::ranges" bug:https://youtrack.jetbrains.com/issue/CPP-20238
 
 #set(ENV{ASAN_OPTIONS} "symbolize=1:suppressions=${CMAKE_SOURCE_DIR}/san.suppress")
 #set(ENV{LSAN_OPTIONS} "suppressions=${CMAKE_SOURCE_DIR}/san.suppress")
@@ -20,6 +20,15 @@ message(GIBAMSG ${GIBA_SANITIZE})
 find_package(Vulkan REQUIRED)
 #find_package(SDL2 REQUIRED)
 
+Include(FetchContent)
+
+FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY  https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.0.0-preview3
+        )
+
+FetchContent_MakeAvailable(Catch2)
 
 
 add_subdirectory("src")

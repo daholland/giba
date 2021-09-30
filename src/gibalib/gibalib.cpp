@@ -122,3 +122,9 @@ opcodes::Opcode CPU::fetch_opcode(uint8_t instruction) {
 
     return fetched_op;
 }
+
+opcodes::Opcode CPU::fetch_opcode_prefixed(uint8_t instruction) {
+    opcodes::Opcode fetched_op = opcodes_prefixed[instruction];
+
+    return fetched_op;
+}

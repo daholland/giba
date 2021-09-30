@@ -67,6 +67,7 @@ namespace gibalib {
         uint8_t E;
         uint8_t H;
         uint8_t L;
+        uint16_t SP;
         uint16_t PC;
     };
 
